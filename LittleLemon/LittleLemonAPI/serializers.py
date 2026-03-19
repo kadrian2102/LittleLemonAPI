@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
+from django.contrib.auth.models import User
 from .models import MenuItem, Category
 import bleach
 
@@ -30,3 +31,8 @@ class MenuItemSerializer(serializers.ModelSerializer):
                 ]
             }
         }
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'date_joined']
