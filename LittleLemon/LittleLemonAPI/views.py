@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status, generics, viewsets
@@ -39,14 +39,10 @@ class MenuItemsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# # GET single menu-items endpoint
-# class SingleItemView(APIView):
-#     permission_classes = [IsManagerForUnsafeMethods]
+# GET single menu-items endpoint
+class SingleItemView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsManagerForUnsafeMethods]
+    queryset = MenuItem.objects.all()
+    serializer_class = MenuItemSerializer
 
-#     def get(self, request):
-#         items = MenuItem.objects.all()
-#         serializer = MenuItemSerializer(items, many=True)
-#         return Response
-#     queryset = MenuItem.objects.all()
-#     serializer_class = MenuItemSerializer
     
