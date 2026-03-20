@@ -2,10 +2,11 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.models import User, Group
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, generics, viewsets
-from .models import MenuItem
+from .models import MenuItem, Cart
 from rest_framework.views import APIView
-from .serializers import MenuItemSerializer, UserSerializer
+from .serializers import MenuItemSerializer, UserSerializer, CartSerializer
 from .permissions import IsManagerForUnsafeMethods
 # from rest_framework.permissions import IsManagerForUnsafeMethods
 # from rest_framework.decorators import permission_classes
@@ -201,4 +202,102 @@ class ManagerUserDetailView(APIView):
                 "username": user.username,
                 "email": user.email
             }
+        }, status=status.HTTP_200_OK)
+    
+class CartView(APIView):
+    """
+    Endpoint para gestionar el carrito de compras del usuario autenticado
+    
+    GET /api/cart/menu-items/ - Ver items del carrito
+    POST /api/cart/menu-items/ - Agregar item al carrito
+    DELETE /api/cart/menu-items/ - Vaciar el carrito
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """
+        GET: Retorna todos los items en el carrito del usuario autenticado
+        """
+        cart_items = Cart.objects.filter(user=request.user).select_related('menuitem')
+        serializer = CartSerializer(cart_items, many=True, context={'request': request})
+        
+        # Calcular el total del carrito
+        total = sum(item.price for item in cart_items)
+        
+        return Response({
+            'user': request.user.username,
+            'cart_items': serializer.data,
+            'total_items': cart_items.count(),
+            'total_price': total
+        })
+    
+    def post(self, request):
+        """
+        POST: Agrega un item al carrito
+        Payload esperado: {"menuitem_id": 1, "quantity": 2}
+        """
+        # Validar que se proporcionen los campos necesarios
+        if 'menuitem_id' not in request.data:
+            return Response(
+                {"detail": "El campo 'menuitem_id' es requerido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que el menuitem existe
+        menuitem_id = request.data['menuitem_id']
+        menuitem = get_object_or_404(MenuItem, pk=menuitem_id)
+        
+        # Obtener cantidad (por defecto 1)
+        quantity = request.data.get('quantity', 1)
+        if quantity < 1:
+            return Response(
+                {"detail": "La cantidad debe ser al menos 1"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Buscar si el item ya existe en el carrito
+        cart_item, created = Cart.objects.get_or_create(
+            user=request.user,
+            menuitem=menuitem,
+            defaults={
+                'quantity': quantity,
+                'unit_price': menuitem.price,
+                'price': quantity * menuitem.price
+            }
+        )
+        
+        # Si ya existía, actualizar la cantidad
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.price = cart_item.quantity * cart_item.unit_price
+            cart_item.save()
+            message = f"Cantidad actualizada. Ahora tienes {cart_item.quantity} unidades de {menuitem.title}"
+        else:
+            message = f"{menuitem.title} agregado al carrito"
+        
+        serializer = CartSerializer(cart_item, context={'request': request})
+        
+        return Response({
+            'detail': message,
+            'cart_item': serializer.data
+        }, status=status.HTTP_201_CREATED)
+    
+    def delete(self, request):
+        """
+        DELETE: Elimina todos los items del carrito del usuario autenticado
+        """
+        # Verificar si el carrito está vacío
+        cart_items = Cart.objects.filter(user=request.user)
+        items_count = cart_items.count()
+        
+        if items_count == 0:
+            return Response({
+                'detail': 'El carrito ya está vacío'
+            }, status=status.HTTP_200_OK)
+        
+        # Eliminar todos los items
+        cart_items.delete()
+        
+        return Response({
+            'detail': f'Se eliminaron {items_count} items del carrito'
         }, status=status.HTTP_200_OK)
